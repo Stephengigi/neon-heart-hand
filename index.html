@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#030006" />
+<meta name="description" content="Hand controlled neon particle heart — MediaPipe Hand Landmarker" />
+<title>NEON HEART · Hand Particle</title>
+<style>
+  :root { --pink:#ff4fd8; --violet:#8b5cff; --cyan:#4de8ff; --text:rgba(255,255,255,.9); }
+  * { box-sizing:border-box; }
+  html,body { width:100%; height:100%; margin:0; overflow:hidden; background:#020006; color:var(--text); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  body { touch-action:none; }
+  #app { position:fixed; inset:0; background:
+    radial-gradient(circle at 50% 48%, rgba(153,46,255,.10), transparent 32%),
+    radial-gradient(circle at 50% 110%, rgba(255,31,190,.07), transparent 38%),
+    #020006; }
+  canvas#scene { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse at center,transparent 48%,rgba(0,0,0,.58) 100%); }
+  .noise { position:absolute; inset:0; pointer-events:none; opacity:.035; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E"); }
+  .topbar { position:absolute; top:max(18px,env(safe-area-inset-top)); left:18px; right:18px; display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none; }
+  .brand { letter-spacing:.18em; font-size:11px; font-weight:700; text-transform:uppercase; color:rgba(255,255,255,.72); }
+  .brand span { color:#ff68e1; }
+  .status { pointer-events:auto; display:flex; gap:8px; align-items:center; padding:8px 11px; border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(12,5,24,.52); backdrop-filter:blur(16px); box-shadow:0 8px 35px rgba(0,0,0,.3); font-size:11px; color:rgba(255,255,255,.72); }
+  .dot { width:7px; height:7px; border-radius:50%; background:#777; box-shadow:0 0 10px currentColor; }
+  .status.ready .dot { background:#ff55d9; color:#ff55d9; }
+  .status.live .dot { background:#67ffcf; color:#67ffcf; }
+  .status.error .dot { background:#ff5e78; color:#ff5e78; }
+  .hint { position:absolute; left:50%; bottom:max(28px,calc(env(safe-area-inset-bottom) + 18px)); transform:translateX(-50%); width:min(92vw,520px); text-align:center; pointer-events:none; transition:opacity .6s ease,transform .6s ease; }
+  .hint.hide { opacity:0; transform:translate(-50%,12px); }
+  .hint-title { font-size:clamp(14px,2vw,17px); font-weight:600; letter-spacing:.02em; text-shadow:0 2px 18px #000; }
+  .hint-sub { margin-top:6px; font-size:11px; color:rgba(255,255,255,.46); }
+  .panel { position:absolute; right:18px; bottom:max(22px,calc(env(safe-area-inset-bottom) + 12px)); width:220px; padding:12px; border:1px solid rgba(255,255,255,.1); border-radius:18px; background:rgba(8,3,16,.48); backdrop-filter:blur(18px); box-shadow:0 18px 55px rgba(0,0,0,.35); opacity:0; transform:translateY(10px); pointer-events:none; transition:.25s; }
+  .panel.show { opacity:1; transform:none; pointer-events:auto; }
+  .panel video { width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; transform:scaleX(-1); display:block; background:#000; }
+  .panel-row { display:flex; justify-content:space-between; margin-top:9px; font-size:10px; color:rgba(255,255,255,.55); }
+  .actions { position:absolute; top:max(58px,calc(env(safe-area-inset-top) + 52px)); right:18px; display:flex; gap:8px; }
+  button { appearance:none; border:1px solid rgba(255,255,255,.13); color:rgba(255,255,255,.8); background:rgba(15,6,25,.5); backdrop-filter:blur(14px); border-radius:999px; padding:8px 11px; font:600 10px inherit; letter-spacing:.04em; cursor:pointer; }
+  button:active { transform:scale(.97); }
+  #start { position:absolute; inset:0; display:grid; place-items:center; background:radial-gradient(circle at center,rgba(17,3,29,.7),rgba(2,0,6,.96)); z-index:10; transition:opacity .45s; }
+  #start.hidden { opacity:0; pointer-events:none; }
+  .start-card { width:min(88vw,420px); text-align:center; padding:34px 28px; border:1px solid rgba(255,255,255,.1); border-radius:28px; background:rgba(10,4,18,.58); backdrop-filter:blur(24px); box-shadow:0 30px 100px rgba(0,0,0,.5),0 0 70px rgba(210,48,255,.08); }
+  .orb { width:74px; height:74px; margin:0 auto 20px; border-radius:50%; background:radial-gradient(circle at 35% 30%,#fff,#ff8deb 15%,#ff34ce 36%,#711dff 70%,transparent 71%); filter:drop-shadow(0 0 22px rgba(255,49,215,.7)); animation:pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform:scale(1.08); filter:drop-shadow(0 0 34px rgba(255,49,215,.95)); } }
+  h1 { margin:0; font-size:clamp(24px,6vw,34px); letter-spacing:.1em; }
+  .start-card p { margin:12px 0 22px; line-height:1.7; font-size:12px; color:rgba(255,255,255,.54); }
+  #startBtn { padding:12px 24px; font-size:12px; border-color:rgba(255,87,220,.45); color:#fff; background:linear-gradient(100deg,rgba(255,48,207,.18),rgba(107,63,255,.18)); box-shadow:0 0 30px rgba(255,48,207,.12); }
+  .error-box { display:none; margin-top:14px; color:#ff8b9b; font-size:11px; line-height:1.6; }
+  .error-box.show { display:block; }
+  @media (max-width:600px) {
+    .topbar { left:12px; right:12px; }
+    .actions { top:auto; right:12px; bottom:max(82px,calc(env(safe-area-inset-bottom) + 68px)); }
+    .panel { left:12px; right:12px; bottom:max(78px,calc(env(safe-area-inset-bottom) + 64px)); width:auto; }
+    .panel video { aspect-ratio:16/9; }
+    .hint { bottom:max(25px,calc(env(safe-area-inset-bottom) + 12px)); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div class="vignette"></div><div class="noise"></div>
+  <div class="topbar">
+    <div class="brand">NEON <span>HEART</span> / HAND TRACK</div>
+    <div id="status" class="status"><i class="dot"></i><span id="statusText">WAITING</span></div>
+  </div>
+  <div class="actions"><button id="cameraBtn">CAMERA</button></div>
+  <div id="cameraPanel" class="panel">
+    <video id="video" autoplay muted playsinline></video>
+    <div class="panel-row"><span id="trackingText">未检测到手掌</span><span id="fpsText">60 FPS</span></div>
+  </div>
+  <div id="hint" class="hint">
+    <div class="hint-title">把手伸向镜头，爱心会随距离放大 / 缩小</div>
+    <div class="hint-sub">距离越近 → 粒子越大；距离越远 → 粒子越小 · 整个过程在浏览器本地处理</div>
+  </div>
+  <div id="start">
+    <div class="start-card">
+      <div class="orb"></div>
+      <h1>NEON HEART</h1>
+      <p>允许摄像头后，把手掌放到镜头前。MediaPipe 会实时追踪 21 个手部关键点，让粒子爱心跟随你的手掌距离变化。</p>
+      <button id="startBtn">开启摄像头</button>
+      <div id="errorBox" class="error-box"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/+esm";
+
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d', { alpha:false });
+const video = document.getElementById('video');
+const status = document.getElementById('status');
+const statusText = document.getElementById('statusText');
+const trackingText = document.getElementById('trackingText');
+const fpsText = document.getElementById('fpsText');
+const hint = document.getElementById('hint');
+const start = document.getElementById('start');
+const startBtn = document.getElementById('startBtn');
+const errorBox = document.getElementById('errorBox');
+const cameraBtn = document.getElementById('cameraBtn');
+const cameraPanel = document.getElementById('cameraPanel');
+
+const TAU = Math.PI * 2;
+let W=innerWidth,H=innerHeight,DPR=1;
+let particles=[];
+let handLandmarker=null, stream=null;
+let running=false, lastVideoTime=-1, lastInference=0;
+let targetScale=1.0, currentScale=1.0;
+let targetX=.5,targetY=.5,currentX=.5,currentY=.5;
+let lastHandSeen=0;
+let frames=0,lastFpsTime=performance.now(),fps=60;
+const isMobile=()=>Math.min(innerWidth,innerHeight)<700;
+
+function resize(){
+  W=innerWidth; H=innerHeight; DPR=Math.min(devicePixelRatio||1,isMobile()?1.5:2);
+  canvas.width=Math.floor(W*DPR); canvas.height=Math.floor(H*DPR);
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  buildParticles();
+}
+
+function buildParticles(){
+  const count=isMobile()?3000:4800;
+  particles=new Array(count);
+  for(let i=0;i<count;i++){
+    const t=Math.random()*TAU;
+    const r=Math.sqrt(Math.random());
+    const hx=16*Math.sin(t)**3;
+    const hy=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));
+    const jitter=(Math.random()-.5)*(0.55+Math.random()*1.5);
+    particles[i]={
+      bx:(hx*r)+jitter,
+      by:(hy*r)+jitter,
+      phase:Math.random()*TAU,
+      twinkle:.5+Math.random()*1.5,
+      size:.45+Math.random()*1.25,
+      hue:Math.random(),
+      alpha:.5+Math.random()*.5,
+      depth:.7+Math.random()*.7
+    };
+  }
+}
+
+function colorFor(p,time){
+  const h=(p.hue + time*.000035*p.twinkle)%1;
+  // neon pink / violet / warm highlight palette
+  let r=255,g=70,b=190;
+  if(h<.34){ const q=h/.34; r=255; g=50+Math.round(q*105); b=190+Math.round(q*50); }
+  else if(h<.68){ const q=(h-.34)/.34; r=255-Math.round(q*65); g=155-Math.round(q*85); b=240+Math.round(q*15); }
+  else { const q=(h-.68)/.32; r=190+Math.round(q*65); g=70-Math.round(q*20); b=255; }
+  return [r,g,b];
+}
+
+function drawParticle(x,y,size,c,alpha){
+  ctx.globalAlpha=alpha*.18;
+  ctx.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;
+  ctx.beginPath(); ctx.arc(x,y,size*2.6,0,TAU); ctx.fill();
+  ctx.globalAlpha=alpha;
+  ctx.beginPath(); ctx.arc(x,y,size,0,TAU); ctx.fill();
+}
+
+function render(time){
+  requestAnimationFrame(render);
+  currentScale += (targetScale-currentScale)*.18;
+  currentX += (targetX-currentX)*.11;
+  currentY += (targetY-currentY)*.11;
+
+  // soft trails, not a full clear: gives the particles a premium glow.
+  ctx.globalCompositeOperation='source-over';
+  ctx.fillStyle='rgba(2,0,6,.25)'; ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation='lighter';
+
+  const base=Math.min(W,H)/39;
+  const scale=base*currentScale;
+  const cx=W*(.5+(currentX-.5)*.13);
+  const cy=H*(.49+(currentY-.5)*.10);
+  const breathe=1+Math.sin(time*.0012)*.012;
+
+  for(const p of particles){
+    const wobble=Math.sin(time*.001*p.twinkle+p.phase)*.16;
+    const x=cx+p.bx*scale*p.depth*breathe + wobble;
+    const y=cy+p.by*scale*p.depth*breathe + Math.cos(time*.0011*p.twinkle+p.phase)*.12;
+    const pulse=.82+.18*Math.sin(time*.002*p.twinkle+p.phase);
+    const c=colorFor(p,time);
+    drawParticle(x,y,p.size*p.depth*pulse,c,p.alpha);
+  }
+  ctx.globalCompositeOperation='source-over';
+  frames++;
+  if(time-lastFpsTime>700){ fps=Math.round(frames*1000/(time-lastFpsTime)); frames=0; lastFpsTime=time; fpsText.textContent=fps+' FPS'; }
+}
+
+function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+function updateFromHand(result){
+  if(!result?.landmarks?.length){
+    if(performance.now()-lastHandSeen>350){
+      targetScale += (1-targetScale)*.08;
+      trackingText.textContent='未检测到手掌';
+      targetX += (.5-targetX)*.04; targetY += (.5-targetY)*.04;
+    }
+    return;
+  }
+  const lm=result.landmarks[0];
+  // Palm width: MCP index(5) -> MCP pinky(17). It is much more stable than a detector bbox.
+  const palmWidth=dist(lm[5],lm[17]);
+  const palmHeight=dist(lm[0],lm[9]);
+  const palmSize=(palmWidth+palmHeight*.35)/1.35;
+  // Hand close to camera = larger normalized palm = larger heart.
+  const normalized=Math.max(0,Math.min(1,(palmSize-.075)/(.27-.075)));
+  const eased=normalized*normalized*(3-2*normalized);
+  targetScale=.58+eased*1.75;
+  targetX=1-lm[9].x; // mirror to match the user's view
+  targetY=lm[9].y;
+  lastHandSeen=performance.now();
+  trackingText.textContent='手掌已锁定';
+  status.className='status live'; statusText.textContent='TRACKING';
+  hint.classList.add('hide');
+}
+
+async function createTracker(){
+  const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm');
+  const common={
+    baseOptions:{
+      modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      delegate:'GPU'
+    },
+    runningMode:'VIDEO', numHands:1,
+    minHandDetectionConfidence:.45,
+    minHandPresenceConfidence:.45,
+    minTrackingConfidence:.42
+  };
+  try { handLandmarker=await HandLandmarker.createFromOptions(vision,common); }
+  catch(gpuError){
+    console.warn('GPU delegate failed, fallback to CPU',gpuError);
+    handLandmarker=await HandLandmarker.createFromOptions(vision,{...common,baseOptions:{...common.baseOptions,delegate:'CPU'}});
+  }
+}
+
+async function detectLoop(now){
+  if(!running) return;
+  requestAnimationFrame(detectLoop);
+  if(video.readyState<2 || !handLandmarker) return;
+  // Avoid duplicate frames and cap inference to ~27-30 FPS so the render loop stays responsive.
+  if(video.currentTime===lastVideoTime || now-lastInference<36) return;
+  lastVideoTime=video.currentTime; lastInference=now;
+  try{
+    const result=handLandmarker.detectForVideo(video,Math.round(now));
+    updateFromHand(result);
+  }catch(e){ console.warn('hand detection frame failed',e); }
+}
+
+async function startCamera(){
+  if(!navigator.mediaDevices?.getUserMedia) throw new Error('当前浏览器不支持摄像头访问，请使用最新版 Chrome / Safari。');
+  status.className='status ready'; statusText.textContent='LOADING AI';
+  startBtn.disabled=true; startBtn.textContent='正在加载…'; errorBox.classList.remove('show');
+  try{
+    // 640x480 gives the detector enough pixels without wasting mobile CPU.
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'user'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:30,max:30}},audio:false});
+    video.srcObject=stream; await video.play();
+    await createTracker();
+    running=true; start.classList.add('hidden');
+    status.className='status live'; statusText.textContent='CAMERA ON';
+    requestAnimationFrame(detectLoop);
+  }catch(err){
+    console.error(err);
+    status.className='status error'; statusText.textContent='CAMERA ERROR';
+    errorBox.textContent=(err.name==='NotAllowedError')?'摄像头权限被拒绝：请在浏览器地址栏的摄像头权限里选择“允许”，再刷新页面。':`启动失败：${err.message||err}`;
+    errorBox.classList.add('show'); startBtn.disabled=false; startBtn.textContent='重试';
+  }
+}
+
+startBtn.addEventListener('click',startCamera);
+cameraBtn.addEventListener('click',()=>cameraPanel.classList.toggle('show'));
+window.addEventListener('resize',resize,{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(resize,250),{passive:true});
+window.addEventListener('beforeunload',()=>stream?.getTracks().forEach(t=>t.stop()));
+
+resize();
+ctx.fillStyle='#020006'; ctx.fillRect(0,0,W,H);
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
