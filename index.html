@@ -34,7 +34,8 @@
   .panel.show { opacity:1; transform:none; pointer-events:auto; }
   .panel video { width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px; transform:scaleX(-1); display:block; background:#000; }
   .panel-row { display:flex; justify-content:space-between; margin-top:9px; font-size:10px; color:rgba(255,255,255,.55); }
-  .actions { position:absolute; top:max(58px,calc(env(safe-area-inset-top) + 52px)); right:18px; display:flex; gap:8px; }
+  .panel-close{width:100%;margin-top:8px;}
+  .actions { position:absolute; top:max(58px,calc(env(safe-area-inset-top) + 52px)); right:max(18px,env(safe-area-inset-right)); display:flex; gap:8px; }
   button { appearance:none; border:1px solid rgba(255,255,255,.13); color:rgba(255,255,255,.8); background:rgba(15,6,25,.5); backdrop-filter:blur(14px); border-radius:999px; padding:8px 11px; font:600 10px inherit; letter-spacing:.04em; cursor:pointer; }
   button:active { transform:scale(.97); }
   #start { position:absolute; inset:0; display:grid; place-items:center; background:radial-gradient(circle at center,rgba(17,3,29,.7),rgba(2,0,6,.96)); z-index:10; transition:opacity .45s; }
@@ -49,7 +50,8 @@
   .error-box.show { display:block; }
   @media (max-width:600px) {
     .topbar { left:12px; right:12px; }
-    .actions { top:auto; right:12px; bottom:max(82px,calc(env(safe-area-inset-bottom) + 68px)); }
+    /* 手机端：把CAMERA按钮挪到底部安全区上方，不再顶部，避免单手点不到 */
+    .actions { top:auto; right:max(12px,env(safe-area-inset-right)); bottom:max(100px,calc(env(safe-area-inset-bottom)+72px)); }
     .panel { left:12px; right:12px; bottom:max(78px,calc(env(safe-area-inset-bottom) + 64px)); width:auto; }
     .panel video { aspect-ratio:16/9; }
     .hint { bottom:max(25px,calc(env(safe-area-inset-bottom) + 12px)); }
@@ -64,10 +66,11 @@
     <div class="brand">NEON <span>HEART</span> / HAND TRACK</div>
     <div id="status" class="status"><i class="dot"></i><span id="statusText">WAITING</span></div>
   </div>
-  <div class="actions"><button id="cameraBtn">CAMERA</button></div>
+  <div class="actions"><button id="cameraBtn">CAMERA预览</button></div>
   <div id="cameraPanel" class="panel">
     <video id="video" autoplay muted playsinline></video>
     <div class="panel-row"><span id="trackingText">未检测到手掌</span><span id="fpsText">60 FPS</span></div>
+    <button class="panel-close" id="panelCloseBtn">关闭预览</button>
   </div>
   <div id="hint" class="hint">
     <div class="hint-title">把手伸向镜头，爱心会随距离放大 / 缩小</div>
@@ -83,10 +86,8 @@
     </div>
   </div>
 </div>
-
 <script type="module">
 import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/+esm";
-
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d', { alpha:false });
 const video = document.getElementById('video');
@@ -100,6 +101,7 @@ const startBtn = document.getElementById('startBtn');
 const errorBox = document.getElementById('errorBox');
 const cameraBtn = document.getElementById('cameraBtn');
 const cameraPanel = document.getElementById('cameraPanel');
+const panelCloseBtn = document.getElementById('panelCloseBtn');
 
 const TAU = Math.PI * 2;
 let W=innerWidth,H=innerHeight,DPR=1;
@@ -112,6 +114,11 @@ let lastHandSeen=0;
 let frames=0,lastFpsTime=performance.now(),fps=60;
 const isMobile=()=>Math.min(innerWidth,innerHeight)<700;
 
+// 新增关闭预览按钮事件
+panelCloseBtn.addEventListener('click', ()=>{
+    cameraPanel.classList.remove('show');
+});
+
 function resize(){
   W=innerWidth; H=innerHeight; DPR=Math.min(devicePixelRatio||1,isMobile()?1.5:2);
   canvas.width=Math.floor(W*DPR); canvas.height=Math.floor(H*DPR);
@@ -119,7 +126,6 @@ function resize(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
   buildParticles();
 }
-
 function buildParticles(){
   const count=isMobile()?3000:4800;
   particles=new Array(count);
@@ -141,17 +147,14 @@ function buildParticles(){
     };
   }
 }
-
 function colorFor(p,time){
   const h=(p.hue + time*.000035*p.twinkle)%1;
-  // neon pink / violet / warm highlight palette
   let r=255,g=70,b=190;
   if(h<.34){ const q=h/.34; r=255; g=50+Math.round(q*105); b=190+Math.round(q*50); }
   else if(h<.68){ const q=(h-.34)/.34; r=255-Math.round(q*65); g=155-Math.round(q*85); b=240+Math.round(q*15); }
   else { const q=(h-.68)/.32; r=190+Math.round(q*65); g=70-Math.round(q*20); b=255; }
   return [r,g,b];
 }
-
 function drawParticle(x,y,size,c,alpha){
   ctx.globalAlpha=alpha*.18;
   ctx.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;
@@ -159,24 +162,19 @@ function drawParticle(x,y,size,c,alpha){
   ctx.globalAlpha=alpha;
   ctx.beginPath(); ctx.arc(x,y,size,0,TAU); ctx.fill();
 }
-
 function render(time){
   requestAnimationFrame(render);
   currentScale += (targetScale-currentScale)*.18;
   currentX += (targetX-currentX)*.11;
   currentY += (targetY-currentY)*.11;
-
-  // soft trails, not a full clear: gives the particles a premium glow.
   ctx.globalCompositeOperation='source-over';
   ctx.fillStyle='rgba(2,0,6,.25)'; ctx.fillRect(0,0,W,H);
   ctx.globalCompositeOperation='lighter';
-
   const base=Math.min(W,H)/39;
   const scale=base*currentScale;
   const cx=W*(.5+(currentX-.5)*.13);
   const cy=H*(.49+(currentY-.5)*.10);
   const breathe=1+Math.sin(time*.0012)*.012;
-
   for(const p of particles){
     const wobble=Math.sin(time*.001*p.twinkle+p.phase)*.16;
     const x=cx+p.bx*scale*p.depth*breathe + wobble;
@@ -189,9 +187,7 @@ function render(time){
   frames++;
   if(time-lastFpsTime>700){ fps=Math.round(frames*1000/(time-lastFpsTime)); frames=0; lastFpsTime=time; fpsText.textContent=fps+' FPS'; }
 }
-
 function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
-
 function updateFromHand(result){
   if(!result?.landmarks?.length){
     if(performance.now()-lastHandSeen>350){
@@ -202,22 +198,19 @@ function updateFromHand(result){
     return;
   }
   const lm=result.landmarks[0];
-  // Palm width: MCP index(5) -> MCP pinky(17). It is much more stable than a detector bbox.
   const palmWidth=dist(lm[5],lm[17]);
   const palmHeight=dist(lm[0],lm[9]);
   const palmSize=(palmWidth+palmHeight*.35)/1.35;
-  // Hand close to camera = larger normalized palm = larger heart.
   const normalized=Math.max(0,Math.min(1,(palmSize-.075)/(.27-.075)));
   const eased=normalized*normalized*(3-2*normalized);
   targetScale=.58+eased*1.75;
-  targetX=1-lm[9].x; // mirror to match the user's view
+  targetX=1-lm[9].x;
   targetY=lm[9].y;
   lastHandSeen=performance.now();
   trackingText.textContent='手掌已锁定';
   status.className='status live'; statusText.textContent='TRACKING';
   hint.classList.add('hide');
 }
-
 async function createTracker(){
   const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm');
   const common={
@@ -236,12 +229,10 @@ async function createTracker(){
     handLandmarker=await HandLandmarker.createFromOptions(vision,{...common,baseOptions:{...common.baseOptions,delegate:'CPU'}});
   }
 }
-
 async function detectLoop(now){
   if(!running) return;
   requestAnimationFrame(detectLoop);
   if(video.readyState<2 || !handLandmarker) return;
-  // Avoid duplicate frames and cap inference to ~27-30 FPS so the render loop stays responsive.
   if(video.currentTime===lastVideoTime || now-lastInference<36) return;
   lastVideoTime=video.currentTime; lastInference=now;
   try{
@@ -249,13 +240,11 @@ async function detectLoop(now){
     updateFromHand(result);
   }catch(e){ console.warn('hand detection frame failed',e); }
 }
-
 async function startCamera(){
   if(!navigator.mediaDevices?.getUserMedia) throw new Error('当前浏览器不支持摄像头访问，请使用最新版 Chrome / Safari。');
   status.className='status ready'; statusText.textContent='LOADING AI';
   startBtn.disabled=true; startBtn.textContent='正在加载…'; errorBox.classList.remove('show');
   try{
-    // 640x480 gives the detector enough pixels without wasting mobile CPU.
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'user'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:30,max:30}},audio:false});
     video.srcObject=stream; await video.play();
     await createTracker();
@@ -269,13 +258,11 @@ async function startCamera(){
     errorBox.classList.add('show'); startBtn.disabled=false; startBtn.textContent='重试';
   }
 }
-
 startBtn.addEventListener('click',startCamera);
 cameraBtn.addEventListener('click',()=>cameraPanel.classList.toggle('show'));
 window.addEventListener('resize',resize,{passive:true});
 window.addEventListener('orientationchange',()=>setTimeout(resize,250),{passive:true});
 window.addEventListener('beforeunload',()=>stream?.getTracks().forEach(t=>t.stop()));
-
 resize();
 ctx.fillStyle='#020006'; ctx.fillRect(0,0,W,H);
 requestAnimationFrame(render);
